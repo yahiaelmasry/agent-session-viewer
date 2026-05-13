@@ -14,8 +14,14 @@ Both extractors emit `{source, messages: [{role, text}]}` (`role`: `user` | `ass
 
 ## Source files
 
-MacOS:
+macOS / Linux:
   - Claude Code: `~/.claude/projects/<cwd-slug>/<uuid>.jsonl`
   - Codex CLI: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+
+Windows:
+  - Claude Code: `%USERPROFILE%\.claude\projects\<cwd-slug>\<uuid>.jsonl`
+  - Codex CLI: `%USERPROFILE%\.codex\sessions\YYYY\MM\DD\rollout-*.jsonl`
+
+Override defaults with `CLAUDE_CONFIG_DIR` or `CODEX_HOME`.
 
 Python 3.9+, stdlib only. HTML viewer loads marked, highlight.js, mermaid, svg-pan-zoom from CDN.
