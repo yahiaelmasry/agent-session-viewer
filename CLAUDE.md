@@ -10,7 +10,7 @@ No conversation analysis, search, or unrelated tools.
 ## Stack
 
 Python 3.9+, stdlib only by default. New pip deps require justification.
-HTML viewer uses CDN libs. Do not vendor.
+HTML viewer uses CDN libs, never vendor.
 
 ## Schema
 
