@@ -36,7 +36,7 @@ def test_user_and_assistant_kept(tmp_path: Path) -> None:
         response_message("assistant", "hi", "output_text"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [
         {"role": "user", "text": "hello"},
         {"role": "assistant", "text": "hi"},
@@ -53,7 +53,7 @@ def test_non_message_response_items_dropped(tmp_path: Path) -> None:
         response_message("user", "kept"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "kept"}]
 
 
@@ -66,7 +66,7 @@ def test_session_meta_and_turn_context_dropped(tmp_path: Path) -> None:
         response_message("user", "kept"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "kept"}]
 
 
@@ -79,7 +79,7 @@ def test_context_compacted_emits_marker(tmp_path: Path) -> None:
         response_message("user", "after"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [
         {"role": "user", "text": "before"},
         {
@@ -99,7 +99,7 @@ def test_first_environment_context_dropped(tmp_path: Path) -> None:
         response_message("user", "<environment_context>another</environment_context>"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     texts = [m["text"] for m in data["messages"]]
     assert texts[0] == "real prompt"
     assert texts[1].startswith("<environment_context>")
@@ -113,7 +113,7 @@ def test_first_permissions_instructions_dropped(tmp_path: Path) -> None:
         response_message("user", "real prompt"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "real prompt"}]
 
 
@@ -127,7 +127,7 @@ def test_malformed_line_skipped(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert [m["text"] for m in data["messages"]] == ["first", "second"]
 
 
@@ -148,7 +148,7 @@ def test_multiple_text_blocks_concatenated(tmp_path: Path) -> None:
         },
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "assistant", "text": "part 1\npart 2"}]
 
 
@@ -163,7 +163,7 @@ def test_empty_content_skipped(tmp_path: Path) -> None:
         response_message("user", "kept"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "kept"}]
 
 
@@ -181,7 +181,7 @@ def test_empty_input_file(tmp_path: Path) -> None:
     dst = tmp_path / "out.json"
     src.write_text("", encoding="utf-8")
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data == {"source": "empty.jsonl", "messages": []}
 
 
@@ -190,7 +190,7 @@ def test_output_schema(tmp_path: Path) -> None:
     dst = tmp_path / "out.json"
     write_jsonl(src, [response_message("user", "hi")])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["source"] == "rollout.jsonl"
     assert isinstance(data["messages"], list)
     assert set(data.keys()) == {"source", "messages"}

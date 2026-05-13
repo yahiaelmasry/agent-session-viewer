@@ -99,7 +99,7 @@ def is_noise(text: str) -> bool:
 def main() -> None:
     messages: list[dict] = []
 
-    with SRC.open() as f:
+    with SRC.open(encoding="utf-8") as f:
         for raw in f:
             try:
                 d = json.loads(raw)

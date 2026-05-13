@@ -51,7 +51,7 @@ def test_user_and_assistant_text_kept(tmp_path: Path) -> None:
         msg("assistant", [{"type": "text", "text": "hi"}]),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [
         {"role": "user", "text": "hello"},
         {"role": "assistant", "text": "hi"},
@@ -68,7 +68,7 @@ def test_tool_use_blocks_dropped(tmp_path: Path) -> None:
         ]),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "assistant", "text": "calling tool"}]
 
 
@@ -80,7 +80,7 @@ def test_assistant_with_only_tool_use_dropped(tmp_path: Path) -> None:
         msg("assistant", [{"type": "text", "text": "real reply"}]),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "assistant", "text": "real reply"}]
 
 
@@ -92,7 +92,7 @@ def test_tool_result_only_user_message_dropped(tmp_path: Path) -> None:
         msg("user", "real prompt"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "real prompt"}]
 
 
@@ -106,7 +106,7 @@ def test_thinking_blocks_dropped(tmp_path: Path) -> None:
         ]),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "assistant", "text": "answer"}]
 
 
@@ -119,7 +119,7 @@ def test_noise_prefix_dropped(tmp_path: Path, noise: str) -> None:
         msg("user", "real prompt"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "real prompt"}]
 
 
@@ -130,7 +130,7 @@ def test_assistant_noise_prefix_not_filtered(tmp_path: Path) -> None:
         msg("assistant", [{"type": "text", "text": "<system-reminder>still kept"}]),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "assistant", "text": "<system-reminder>still kept"}]
 
 
@@ -141,7 +141,7 @@ def test_ide_file_wrapper_stripped(tmp_path: Path) -> None:
         msg("user", "<ide_opened_file>foo.py</ide_opened_file>\nactual question"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "actual question"}]
 
 
@@ -155,7 +155,7 @@ def test_malformed_line_skipped(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert [m["text"] for m in data["messages"]] == ["first", "second"]
 
 
@@ -168,7 +168,7 @@ def test_non_message_types_ignored(tmp_path: Path) -> None:
         msg("user", "kept"),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "kept"}]
 
 
@@ -182,7 +182,7 @@ def test_multiple_text_blocks_concatenated(tmp_path: Path) -> None:
         ]),
     ])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "assistant", "text": "part 1\npart 2"}]
 
 
@@ -200,7 +200,7 @@ def test_empty_input_file(tmp_path: Path) -> None:
     dst = tmp_path / "out.json"
     src.write_text("", encoding="utf-8")
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data == {"source": "empty.jsonl", "messages": []}
 
 
@@ -209,7 +209,7 @@ def test_output_schema(tmp_path: Path) -> None:
     dst = tmp_path / "out.json"
     write_jsonl(src, [msg("user", "hi")])
     run_script(src, dst)
-    data = json.loads(dst.read_text())
+    data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["source"] == "session.jsonl"
     assert isinstance(data["messages"], list)
     assert set(data.keys()) == {"source", "messages"}
