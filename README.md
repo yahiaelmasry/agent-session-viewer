@@ -1,4 +1,4 @@
-# conversation-export
+# agent-session-viewer
 
 Export Claude Code or Codex CLI session logs to clean JSON, then to a standalone HTML viewer.
 
