@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -172,6 +173,19 @@ def test_unicode_text_preserved(tmp_path: Path) -> None:
     dst = tmp_path / "out.json"
     write_jsonl(src, [response_message("user", "مرحبا 👋 héllo")])
     run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [{"role": "user", "text": "مرحبا 👋 héllo"}]
+
+
+def test_reads_utf8_under_non_utf8_locale(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [response_message("user", "مرحبا 👋 héllo")])
+    env = {**os.environ, "PYTHONUTF8": "0", "LC_ALL": "C", "LANG": "C"}
+    subprocess.run(
+        [sys.executable, str(SCRIPT), str(src), str(dst)],
+        env=env, capture_output=True, text=True, check=True,
+    )
     data = json.loads(dst.read_text(encoding="utf-8"))
     assert data["messages"] == [{"role": "user", "text": "مرحبا 👋 héllo"}]
 
