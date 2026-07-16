@@ -59,30 +59,83 @@ def test_user_and_assistant_text_kept(tmp_path: Path) -> None:
     ]
 
 
-def test_tool_use_blocks_dropped(tmp_path: Path) -> None:
+def test_tool_use_reduced_to_action_line(tmp_path: Path) -> None:
     src = tmp_path / "in.jsonl"
     dst = tmp_path / "out.json"
     write_jsonl(src, [
         msg("assistant", [
             {"type": "text", "text": "calling tool"},
-            {"type": "tool_use", "id": "t1", "name": "Read", "input": {}},
+            {"type": "tool_use", "id": "t1", "name": "Read",
+             "input": {"file_path": "src/foo.py"}},
         ]),
     ])
     run_script(src, dst)
     data = json.loads(dst.read_text(encoding="utf-8"))
-    assert data["messages"] == [{"role": "assistant", "text": "calling tool"}]
+    assert data["messages"] == [
+        {"role": "assistant", "text": "calling tool", "actions": ["Read src/foo.py"]},
+    ]
 
 
-def test_assistant_with_only_tool_use_dropped(tmp_path: Path) -> None:
+def test_bash_summarized_by_description(tmp_path: Path) -> None:
     src = tmp_path / "in.jsonl"
     dst = tmp_path / "out.json"
     write_jsonl(src, [
-        msg("assistant", [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]),
-        msg("assistant", [{"type": "text", "text": "real reply"}]),
+        msg("assistant", [
+            {"type": "tool_use", "id": "t1", "name": "Bash",
+             "input": {"command": "pytest -q && echo done", "description": "Run tests"}},
+        ]),
     ])
     run_script(src, dst)
     data = json.loads(dst.read_text(encoding="utf-8"))
-    assert data["messages"] == [{"role": "assistant", "text": "real reply"}]
+    assert data["messages"] == [{"role": "assistant", "actions": ["Bash: Run tests"]}]
+
+
+def test_tool_error_annotated_on_action(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [
+        msg("assistant", [
+            {"type": "tool_use", "id": "t1", "name": "Write",
+             "input": {"file_path": "a.py", "content": "x"}},
+        ]),
+        msg("user", [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True,
+             "content": "<tool_use_error>File has not been read yet.</tool_use_error>"},
+        ]),
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [
+        {"role": "assistant",
+         "actions": ["Write a.py  → error: File has not been read yet."]},
+    ]
+
+
+def test_ask_user_question_decision_kept(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    # The answer arrives as a tool_result-only user message carrying toolUseResult.
+    user_answer = {
+        "type": "user",
+        "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1",
+             "content": 'Your questions have been answered.'},
+        ]},
+        "toolUseResult": {"answers": {"Login blocker": "Build an offline demo"}},
+    }
+    write_jsonl(src, [
+        msg("assistant", [
+            {"type": "tool_use", "id": "t1", "name": "AskUserQuestion",
+             "input": {"questions": [{"question": "Login blocker", "options": []}]}},
+        ]),
+        user_answer,
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    # assistant AskUserQuestion tool_use produces no action; decision is kept.
+    assert data["messages"] == [
+        {"role": "user", "text": "[decision] Login blocker → Build an offline demo"},
+    ]
 
 
 def test_tool_result_only_user_message_dropped(tmp_path: Path) -> None:
