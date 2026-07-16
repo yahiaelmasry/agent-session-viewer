@@ -10,7 +10,8 @@ python clean_codex_rollout.py  SRC.jsonl DST.json     # Codex rollout → JSON
 python render_conversation_html.py SRC.json [DST.html] # JSON → HTML
 ```
 
-Both extractors emit `{source, messages: [{role, text}]}` (`role`: `user` | `assistant` | `marker`).
+`clean_codex_rollout.py` emits `{source, messages: [{role, text}]}` (`role`: `user` | `assistant` | `marker`).
+`clean_claude_session.py` emits the same shape plus optional per-turn `actions` (tool calls, triaged and collapsed) and a `subagent` role for kept agent reports; see its module docstring for the tiering rules.
 
 ## Source files
 

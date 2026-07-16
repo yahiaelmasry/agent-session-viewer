@@ -59,30 +59,187 @@ def test_user_and_assistant_text_kept(tmp_path: Path) -> None:
     ]
 
 
-def test_tool_use_blocks_dropped(tmp_path: Path) -> None:
+def test_tool_use_reduced_to_action_line(tmp_path: Path) -> None:
+    # prose and tool activity are separate entries (activity flushes at prose/EOF)
     src = tmp_path / "in.jsonl"
     dst = tmp_path / "out.json"
     write_jsonl(src, [
         msg("assistant", [
             {"type": "text", "text": "calling tool"},
-            {"type": "tool_use", "id": "t1", "name": "Read", "input": {}},
+            {"type": "tool_use", "id": "t1", "name": "Read",
+             "input": {"file_path": "src/foo.py"}},
         ]),
     ])
     run_script(src, dst)
     data = json.loads(dst.read_text(encoding="utf-8"))
-    assert data["messages"] == [{"role": "assistant", "text": "calling tool"}]
+    assert data["messages"] == [
+        {"role": "assistant", "text": "calling tool"},
+        {"role": "assistant", "actions": ["Read src/foo.py"]},
+    ]
 
 
-def test_assistant_with_only_tool_use_dropped(tmp_path: Path) -> None:
+def test_consecutive_reads_collapse_across_turns(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    # 3 browser calls, each its own assistant turn with a tool_result echo between
+    recs = []
+    for i in range(3):
+        recs.append(msg("assistant", [
+            {"type": "tool_use", "id": f"b{i}", "name": "mcp__claude-in-chrome__computer",
+             "input": {"action": "left_click"}}]))
+        recs.append(msg("user", [{"type": "tool_result", "tool_use_id": f"b{i}", "content": "ok"}]))
+    write_jsonl(src, recs)
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [{"role": "assistant", "actions": ["browser ×3"]}]
+
+
+def test_meta_tools_dropped(tmp_path: Path) -> None:
     src = tmp_path / "in.jsonl"
     dst = tmp_path / "out.json"
     write_jsonl(src, [
-        msg("assistant", [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]),
-        msg("assistant", [{"type": "text", "text": "real reply"}]),
+        msg("assistant", [
+            {"type": "tool_use", "id": "s1", "name": "ScheduleWakeup", "input": {"delaySeconds": 60}},
+            {"type": "tool_use", "id": "m1", "name": "mcp__ccd_session__mark_chapter",
+             "input": {"title": "next"}},
+            {"type": "text", "text": "done"},
+        ]),
     ])
     run_script(src, dst)
     data = json.loads(dst.read_text(encoding="utf-8"))
-    assert data["messages"] == [{"role": "assistant", "text": "real reply"}]
+    assert data["messages"] == [{"role": "assistant", "text": "done"}]
+
+
+def test_skill_keeps_name_only(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [
+        msg("assistant", [{"type": "tool_use", "id": "k1", "name": "Skill",
+                           "input": {"skill": "ponytail"}}]),
+        # harness injects the skill body as a noise user message — must be dropped
+        msg("user", "Base directory for this skill: /foo/bar\n<full skill body...>"),
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [{"role": "assistant", "actions": ["Skill ponytail"]}]
+
+
+def test_sync_subagent_result_kept_full(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    report = "Findings: the bug is in auth.py line 42, a missing null check. " * 5
+    write_jsonl(src, [
+        msg("assistant", [{"type": "tool_use", "id": "a1", "name": "Agent",
+                           "input": {"description": "hunt the bug", "prompt": "..."}}]),
+        msg("user", [{"type": "tool_result", "tool_use_id": "a1",
+                      "content": [{"type": "text", "text": report}]}]),
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [
+        {"role": "assistant", "actions": ["Agent: hunt the bug"]},
+        {"role": "subagent", "text": report.strip()},
+    ]
+
+
+def test_async_subagent_stub_is_line_only(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [
+        msg("assistant", [{"type": "tool_use", "id": "a1", "name": "Agent",
+                           "input": {"description": "bg task", "prompt": "..."}}]),
+        {"type": "user",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "a1",
+              "content": [{"type": "text", "text": "Async agent launched successfully."}]}]},
+         "toolUseResult": {"isAsync": True, "agentId": "x"}},
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [{"role": "assistant", "actions": ["Agent: bg task"]}]
+
+
+def test_readonly_bash_collapses_mutating_bash_kept(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [
+        msg("assistant", [{"type": "tool_use", "id": "r1", "name": "Bash",
+                           "input": {"command": "ls -la"}}]),
+        msg("user", [{"type": "tool_result", "tool_use_id": "r1", "content": "files"}]),
+        msg("assistant", [{"type": "tool_use", "id": "r2", "name": "Bash",
+                           "input": {"command": "grep foo bar"}}]),
+        msg("user", [{"type": "tool_result", "tool_use_id": "r2", "content": "hit"}]),
+        msg("assistant", [{"type": "tool_use", "id": "w1", "name": "Bash",
+                           "input": {"command": "rm -rf build", "description": "clean build"}}]),
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    # two read-only bashes collapse; the mutating one stays as its own line
+    assert data["messages"] == [
+        {"role": "assistant", "actions": ["bash(ro) ×2", "Bash: clean build"]},
+    ]
+
+
+def test_bash_summarized_by_description(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [
+        msg("assistant", [
+            {"type": "tool_use", "id": "t1", "name": "Bash",
+             "input": {"command": "pytest -q && echo done", "description": "Run tests"}},
+        ]),
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [{"role": "assistant", "actions": ["Bash: Run tests"]}]
+
+
+def test_tool_error_annotated_on_action(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    write_jsonl(src, [
+        msg("assistant", [
+            {"type": "tool_use", "id": "t1", "name": "Write",
+             "input": {"file_path": "a.py", "content": "x"}},
+        ]),
+        msg("user", [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True,
+             "content": "<tool_use_error>File has not been read yet.</tool_use_error>"},
+        ]),
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    assert data["messages"] == [
+        {"role": "assistant",
+         "actions": ["Write a.py  → error: File has not been read yet."]},
+    ]
+
+
+def test_ask_user_question_decision_kept(tmp_path: Path) -> None:
+    src = tmp_path / "in.jsonl"
+    dst = tmp_path / "out.json"
+    # The answer arrives as a tool_result-only user message carrying toolUseResult.
+    user_answer = {
+        "type": "user",
+        "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1",
+             "content": 'Your questions have been answered.'},
+        ]},
+        "toolUseResult": {"answers": {"Login blocker": "Build an offline demo"}},
+    }
+    write_jsonl(src, [
+        msg("assistant", [
+            {"type": "tool_use", "id": "t1", "name": "AskUserQuestion",
+             "input": {"questions": [{"question": "Login blocker", "options": []}]}},
+        ]),
+        user_answer,
+    ])
+    run_script(src, dst)
+    data = json.loads(dst.read_text(encoding="utf-8"))
+    # assistant AskUserQuestion tool_use produces no action; decision is kept.
+    assert data["messages"] == [
+        {"role": "user", "text": "[decision] Login blocker → Build an offline demo"},
+    ]
 
 
 def test_tool_result_only_user_message_dropped(tmp_path: Path) -> None:
