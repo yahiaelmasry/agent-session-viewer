@@ -7,6 +7,8 @@ Consumes the schema produced by `clean_claude_session.py` and
       "source": "<filename>",
       "messages": [
         {"role": "user" | "assistant" | "marker", "text": "..."},
+        {"role": "assistant", "actions": ["Edit a.py", "browser ×42", ...]},
+        {"role": "subagent", "text": "<full agent report>"},
         ...
       ]
     }
@@ -49,6 +51,9 @@ HTML_TEMPLATE = """<!doctype html>
     --assistant-bar: #6d6d6d;
     --marker-bg: #fff7e6;
     --marker-bar: #d49b00;
+    --subagent-tint: #f3eefe;
+    --subagent-bar: #8957e5;
+    --err: #cf222e;
     --code-bg: #f3f4f6;
   }}
   @media (prefers-color-scheme: dark) {{
@@ -64,6 +69,9 @@ HTML_TEMPLATE = """<!doctype html>
       --assistant-bar: #8b949e;
       --marker-bg: #2a2210;
       --marker-bar: #d49b00;
+      --subagent-tint: #1e1633;
+      --subagent-bar: #a371f7;
+      --err: #ff7b72;
       --code-bg: #0d1117;
     }}
   }}
@@ -103,6 +111,24 @@ HTML_TEMPLATE = """<!doctype html>
     text-align: center;
     padding: 10px 18px;
   }}
+  .msg.subagent {{ border-left-color: var(--subagent-bar); background: var(--subagent-tint); }}
+  .msg.activity {{ padding: 10px 18px; background: var(--card); }}
+  .actions {{
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+  }}
+  .actions li {{
+    color: var(--muted);
+    padding: 2px 0 2px 16px;
+    position: relative;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }}
+  .actions li::before {{ content: "\\203A"; position: absolute; left: 2px; color: var(--assistant-bar); }}
+  .actions li.err {{ color: var(--err); }}
   .role {{
     text-transform: uppercase;
     font-size: 11px;
@@ -255,21 +281,37 @@ HTML_TEMPLATE = """<!doctype html>
     if (m.role === 'marker') {{
       el.textContent = m.text;
     }} else {{
+      const hasText = !!m.text;
+      const acts = Array.isArray(m.actions) ? m.actions : [];
+      if (acts.length && !hasText) el.className += ' activity';
       const role = document.createElement('div');
       role.className = 'role';
-      role.textContent = m.role;
-      const body = document.createElement('div');
-      body.className = 'body';
-      body.innerHTML = marked.parse(m.text || '');
-      body.querySelectorAll('pre code.language-mermaid').forEach((codeEl) => {{
-        const pre = codeEl.parentElement;
-        const div = document.createElement('div');
-        div.className = 'mermaid';
-        div.textContent = codeEl.textContent;
-        pre.replaceWith(div);
-      }});
+      role.textContent = (acts.length && !hasText) ? 'actions' : m.role;
       el.appendChild(role);
-      el.appendChild(body);
+      if (hasText) {{
+        const body = document.createElement('div');
+        body.className = 'body';
+        body.innerHTML = marked.parse(m.text);
+        body.querySelectorAll('pre code.language-mermaid').forEach((codeEl) => {{
+          const pre = codeEl.parentElement;
+          const div = document.createElement('div');
+          div.className = 'mermaid';
+          div.textContent = codeEl.textContent;
+          pre.replaceWith(div);
+        }});
+        el.appendChild(body);
+      }}
+      if (acts.length) {{
+        const list = document.createElement('ul');
+        list.className = 'actions';
+        for (const a of acts) {{
+          const li = document.createElement('li');
+          li.textContent = a;
+          if (String(a).includes(' → error:')) li.className = 'err';
+          list.appendChild(li);
+        }}
+        el.appendChild(list);
+      }}
     }}
     root.appendChild(el);
   }}
